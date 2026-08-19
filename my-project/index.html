@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Architecture Demo + Checkout Integration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --brand-primary: #3b82f6;
+            --brand-secondary: #1d4ed8;
+            --bg-color: #f4f4f9;
+        }
+        .bg-brand { background-color: var(--brand-primary); }
+        .text-brand { color: var(--brand-primary); }
+        .border-brand { border-color: var(--brand-primary); }
+        
+        .transition-all { transition: all 0.3s ease; }
+        .perspective-1000 { perspective: 1000px; }
+        
+        .locked-overlay {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Flipbook Styles */
+        #catalogue-viewport {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 0;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #catalogue-container {
+            width: 800px;
+            height: 500px;
+            perspective: 1500px;
+            position: relative;
+        }
+
+        .page {
+            width: 400px;
+            height: 500px;
+            background: white;
+            position: absolute;
+            top: 0;
+            right: 0;
+            transform-origin: left center;
+            transition: transform 0.6s cubic-bezier(0.645, 0.045, 0.355, 1);
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+            box-shadow: inset 3px 0 10px rgba(0,0,0,0.1);
+            border: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .page.flipped {
+            transform: rotateY(-180deg);
+            z-index: 0;
+        }
+
+        .product-card {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: center;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .product-image {
+            width: 100%;
+            height: 140px;
+            background: #f9f9f9;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            border-radius: 4px;
+        }
+
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+
+        .cart-sidebar {
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(100%);
+        }
+        .cart-sidebar.open {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-900 min-h-screen overflow-x-hidden">
+
+    <!-- NAVIGATION -->
+    <nav class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-white font-bold">C</div>
+            <span class="text-xl font-bold tracking-tight">Catalogue<span class="text-brand">SaaS</span></span>
+        </div>
+        <div class="flex gap-4 items-center">
+            <span id="role-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">Guest</span>
+            <button onclick="resetDemo()" class="text-sm text-gray-500 hover:text-brand underline">Reset Demo</button>
+        </div>
+    </nav>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main id="app-container" class="max-w-6xl mx-auto p-6">
+        
+        <!-- INTRO SELECTOR -->
+        <div id="view-selector" class="text-center py-20">
+            <h1 class="text-4xl font-extrabold mb-4 text-gray-900 text-balance">Catalogue SaaS + Checkout Demo</h1>
+            <p class="text-gray-600 mb-12 max-w-lg mx-auto">Experience the customer journey from browsing the flipbook to a simulated Stripe checkout.</p>
+            
+            <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <button onclick="startOnboarding()" class="group p-8 bg-white border-2 border-transparent hover:border-brand rounded-2xl shadow-sm transition-all text-left">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2 text-gray-900">New Vendor Onboarding</h3>
+                    <p class="text-gray-500 text-sm">Signup and see your branded flipbook catalogue with checkout enabled.</p>
+                </button>
+
+                <button onclick="showAdminDashboard()" class="group p-8 bg-white border-2 border-transparent hover:border-brand rounded-2xl shadow-sm transition-all text-left">
+                    <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2 text-gray-900">Developer Dashboard</h3>
+                    <p class="text-gray-500 text-sm">View platform analytics and transaction history.</p>
+                </button>
+            </div>
+        </div>
+
+        <!-- ONBOARDING WIZARD (Shortened for space) -->
+        <div id="onboarding-view" class="hidden max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl">
+            <h2 class="text-2xl font-bold mb-6">Business Setup</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                    <input type="text" id="biz-name" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand" placeholder="Veloce Global Fashion">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Primary Brand Color</label>
+                    <input type="color" id="biz-color" class="w-full h-12 p-1 bg-white border border-gray-300 rounded-lg" value="#3b82f6">
+                </div>
+                <button onclick="finishOnboarding('Premium')" class="w-full bg-brand text-white font-bold py-3 rounded-lg hover:bg-brand-secondary transition-all">Launch Branded Catalogue</button>
+            </div>
+        </div>
+
+        <!-- VENDOR DASHBOARD -->
+        <div id="vendor-dashboard" class="hidden">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-extrabold" id="dash-biz-name">Business Dashboard</h1>
+                    <p class="text-gray-500">Vendor ID: <span id="dash-vendor-id" class="font-mono">#v_8823</span></p>
+                </div>
+                <button onclick="viewPublicStore()" class="bg-brand text-white px-6 py-2 rounded-lg font-bold hover:bg-brand-secondary shadow-lg shadow-blue-200 transition-all">View Customer Storefront</button>
+            </div>
+            
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="font-bold text-lg mb-4">Marketplace Transaction Logic</h3>
+                <p class="text-sm text-gray-600 mb-4">Checkout sessions created here will automatically route 90% to your connected Stripe account and 10% to the platform.</p>
+                <div class="p-4 bg-blue-50 text-blue-700 text-xs font-mono rounded-lg">
+                    stripe.checkout.sessions.create({ transfer_data: { destination: 'acct_123' }, application_fee_amount: total * 0.10 })
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN DASHBOARD -->
+        <div id="admin-dashboard" class="hidden text-center py-20">
+            <h2 class="text-2xl font-bold">Admin Analytics</h2>
+            <p class="text-gray-500 mb-8">System overview of all active checkouts.</p>
+            <button onclick="resetDemo()" class="text-brand underline">Back to Home</button>
+        </div>
+
+        <!-- PUBLIC CATALOGUE (MODAL) -->
+        <div id="public-storefront" class="hidden fixed inset-0 z-[100] bg-white overflow-y-auto">
+            <nav id="store-nav" class="bg-white border-b p-6 flex justify-between items-center sticky top-0 z-[120]">
+                <div id="store-logo" class="text-2xl font-bold tracking-tighter">STORE LOGO</div>
+                <div class="flex gap-4 items-center">
+                    <!-- Cart Trigger -->
+                    <button onclick="toggleCart()" class="relative p-2 hover:bg-gray-100 rounded-full transition-all group">
+                        <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        <span id="cart-count" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white hidden">0</span>
+                    </button>
+                    <div class="h-8 w-px bg-gray-200"></div>
+                    <button onclick="closePublicStore()" class="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </nav>
+            
+            <div id="store-content" class="min-h-screen bg-gray-100 flex flex-col items-center">
+                <div class="text-center mt-12 mb-4">
+                    <h2 class="text-3xl font-black text-gray-900" id="store-display-name">Product Catalogue</h2>
+                    <p class="text-gray-500">Browse items and add to cart for checkout.</p>
+                </div>
+
+                <div id="catalogue-viewport">
+                    <div id="catalogue-container">
+                        <!-- Flipbook Pages Injected Here -->
+                    </div>
+                </div>
+                
+                <!-- Controls -->
+                <div class="flex gap-4 mt-6 mb-20">
+                    <button onclick="prevPage()" class="px-6 py-2 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all font-bold">Previous</button>
+                    <button onclick="nextPage()" class="px-6 py-2 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all font-bold">Next Page</button>
+                </div>
+            </div>
+
+            <!-- SHOPPING CART SIDEBAR -->
+            <div id="cart-sidebar" class="cart-sidebar fixed top-0 right-0 h-full w-96 bg-white shadow-2xl z-[150] flex flex-col">
+                <div class="p-6 border-b flex justify-between items-center">
+                    <h3 class="text-xl font-bold">Your Cart</h3>
+                    <button onclick="toggleCart()" class="text-gray-400 hover:text-black">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                
+                <div id="cart-items" class="flex-grow overflow-y-auto p-6 space-y-4">
+                    <!-- Cart items injected here -->
+                    <div class="text-center text-gray-400 py-10" id="empty-cart-msg">Your cart is empty.</div>
+                </div>
+
+                <div class="p-6 border-t bg-gray-50">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-500 font-medium">Subtotal</span>
+                        <span class="text-2xl font-black" id="cart-total">$0.00</span>
+                    </div>
+                    <button onclick="initiateCheckout()" id="checkout-btn" class="w-full py-4 bg-brand text-white font-black rounded-xl hover:bg-brand-secondary transition-all shadow-lg shadow-blue-100 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Checkout Now
+                    </button>
+                    <p class="text-[10px] text-gray-400 mt-4 text-center">Secure payments powered by Stripe Connect</p>
+                </div>
+            </div>
+            
+            <!-- OVERLAY FOR CART -->
+            <div id="cart-overlay" class="hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-[140]" onclick="toggleCart()"></div>
+        </div>
+
+        <!-- STRIPE SIMULATION MODAL -->
+        <div id="stripe-modal" class="hidden fixed inset-0 z-[200] bg-gray-900/80 flex items-center justify-center p-6">
+            <div class="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+                <div class="bg-brand p-6 text-white text-center">
+                    <div class="text-xs font-bold uppercase tracking-widest opacity-80 mb-2">Secure Checkout</div>
+                    <div class="text-2xl font-black" id="stripe-amount">$0.00</div>
+                </div>
+                <div class="p-8 space-y-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-gray-400">Card Information</label>
+                            <div class="mt-1 border-2 border-gray-100 rounded-xl p-4 flex items-center gap-3">
+                                <svg class="w-6 h-6 text-gray-300" fill="currentColor" viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v4z"></path></svg>
+                                <span class="text-gray-400 tracking-widest">4242 4242 4242 4242</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="border-2 border-gray-100 rounded-xl p-4 text-gray-400">MM/YY</div>
+                            <div class="border-2 border-gray-100 rounded-xl p-4 text-gray-400">CVC</div>
+                        </div>
+                    </div>
+                    <button onclick="simulatePaymentSuccess()" class="w-full bg-brand text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                        <span id="pay-btn-text">Pay Now</span>
+                    </button>
+                    <button onclick="closeStripe()" class="w-full text-gray-400 text-sm hover:text-gray-600 transition-all">Cancel and return</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUCCESS MODAL -->
+        <div id="success-modal" class="hidden fixed inset-0 z-[300] bg-white flex items-center justify-center text-center p-6">
+            <div class="max-w-sm">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-3xl font-black mb-2">Payment Successful!</h2>
+                <p class="text-gray-500 mb-8">An automated PDF invoice has been sent to your WhatsApp number.</p>
+                <button onclick="location.reload()" class="w-full bg-black text-white py-4 rounded-xl font-bold">Back to Store</button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const state = {
+            role: 'Guest',
+            vendor: {
+                name: 'Veloce Global',
+                color: '#3b82f6',
+                id: 'v_' + Math.floor(Math.random() * 9000 + 1000)
+            },
+            cart: []
+        };
+
+        const catalogueData = {
+            pages: [
+                {
+                    id: 1,
+                    products: [
+                        { id: 101, name: "Premium Watch", price: 1200, img: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400" },
+                        { id: 102, name: "Leather Bag", price: 450, img: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=400" }
+                    ]
+                },
+                {
+                    id: 2,
+                    products: [
+                        { id: 103, name: "Sunglasses", price: 150, img: "https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400" },
+                        { id: 104, name: "Smart Speaker", price: 200, img: "https://images.unsplash.com/photo-1589003077984-894e133dabab?w=400" }
+                    ]
+                }
+            ]
+        };
+
+        let currentPage = 0;
+
+        function resetDemo() { window.location.reload(); }
+
+        function startOnboarding() {
+            document.getElementById('view-selector').classList.add('hidden');
+            document.getElementById('onboarding-view').classList.remove('hidden');
+        }
+
+        function finishOnboarding(plan) {
+            state.vendor.name = document.getElementById('biz-name').value || 'New Business';
+            state.vendor.color = document.getElementById('biz-color').value;
+            showVendorDashboard();
+        }
+
+        function showVendorDashboard() {
+            document.getElementById('onboarding-view').classList.add('hidden');
+            document.getElementById('view-selector').classList.add('hidden');
+            document.getElementById('vendor-dashboard').classList.remove('hidden');
+            document.documentElement.style.setProperty('--brand-primary', state.vendor.color);
+            document.getElementById('dash-biz-name').innerText = state.vendor.name;
+        }
+
+        function viewPublicStore() { renderCatalogue(state.vendor.name, state.vendor.color); }
+        function closePublicStore() { document.getElementById('public-storefront').classList.add('hidden'); }
+
+        function renderCatalogue(name, color) {
+            const storefront = document.getElementById('public-storefront');
+            const logo = document.getElementById('store-logo');
+            const displayName = document.getElementById('store-display-name');
+            const container = document.getElementById('catalogue-container');
+            
+            storefront.classList.remove('hidden');
+            logo.innerText = name.toUpperCase();
+            logo.style.color = color;
+            displayName.innerText = name;
+            document.documentElement.style.setProperty('--brand-primary', color);
+
+            container.innerHTML = '';
+            currentPage = 0;
+            
+            [...catalogueData.pages].reverse().forEach((page, index) => {
+                const pageEl = document.createElement('div');
+                pageEl.className = 'page';
+                pageEl.id = `page-${catalogueData.pages.length - 1 - index}`;
+                pageEl.style.zIndex = index;
+                
+                let productsHtml = `<h3 class="text-lg font-bold mb-4 border-b pb-2" style="color: ${color}">Page ${page.id}</h3>`;
+                page.products.forEach(p => {
+                    productsHtml += `
+                        <div class="product-card">
+                            <div class="product-image"><img src="${p.img}" alt="${p.name}"></div>
+                            <strong class="text-sm">${p.name}</strong><br>
+                            <span class="text-xs font-mono font-bold text-gray-400">$${p.price.toLocaleString()}</span>
+                            <div class="mt-3">
+                                <button onclick="addToCart(${p.id}, '${p.name}', ${p.price})" class="w-full py-2 border-2 border-brand text-brand font-bold text-xs rounded-lg hover:bg-brand hover:text-white transition-all">Add to Cart</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                pageEl.innerHTML = productsHtml;
+                container.appendChild(pageEl);
+            });
+        }
+
+        function nextPage() {
+            if (currentPage < catalogueData.pages.length - 1) {
+                const page = document.getElementById(`page-${currentPage}`);
+                page.classList.add('flipped');
+                setTimeout(() => { page.style.zIndex = -1; }, 600); 
+                currentPage++;
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                const page = document.getElementById(`page-${currentPage}`);
+                page.style.zIndex = catalogueData.pages.length - currentPage;
+                page.classList.remove('flipped');
+            }
+        }
+
+        // CART LOGIC
+        function toggleCart() {
+            document.getElementById('cart-sidebar').classList.toggle('open');
+            document.getElementById('cart-overlay').classList.toggle('hidden');
+        }
+
+        function addToCart(id, name, price) {
+            const existing = state.cart.find(item => item.id === id);
+            if (existing) {
+                existing.qty++;
+            } else {
+                state.cart.push({ id, name, price, qty: 1 });
+            }
+            updateCartUI();
+            
+            // Animation feedback
+            const btn = event.target;
+            const original = btn.innerText;
+            btn.innerText = 'Added! ✓';
+            btn.classList.add('bg-brand', 'text-white');
+            setTimeout(() => {
+                btn.innerText = original;
+                btn.classList.remove('bg-brand', 'text-white');
+            }, 1000);
+        }
+
+        function updateCartUI() {
+            const list = document.getElementById('cart-items');
+            const count = document.getElementById('cart-count');
+            const totalEl = document.getElementById('cart-total');
+            const btn = document.getElementById('checkout-btn');
+            const emptyMsg = document.getElementById('empty-cart-msg');
+
+            const totalQty = state.cart.reduce((sum, i) => sum + i.qty, 0);
+            const totalPrice = state.cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+
+            count.innerText = totalQty;
+            count.classList.toggle('hidden', totalQty === 0);
+            totalEl.innerText = `$${totalPrice.toLocaleString()}.00`;
+            btn.disabled = totalQty === 0;
+            emptyMsg.classList.toggle('hidden', totalQty > 0);
+
+            list.innerHTML = '';
+            state.cart.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center bg-gray-50 p-4 rounded-xl';
+                row.innerHTML = `
+                    <div>
+                        <div class="font-bold text-sm">${item.name}</div>
+                        <div class="text-xs text-gray-400">$${item.price} × ${item.qty}</div>
+                    </div>
+                    <button onclick="removeFromCart(${item.id})" class="text-red-400 hover:text-red-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        function removeFromCart(id) {
+            state.cart = state.cart.filter(i => i.id !== id);
+            updateCartUI();
+        }
+
+        // CHECKOUT SIMULATION
+        function initiateCheckout() {
+            const totalPrice = state.cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            document.getElementById('stripe-amount').innerText = `$${totalPrice.toLocaleString()}.00`;
+            document.getElementById('stripe-modal').classList.remove('hidden');
+            toggleCart();
+        }
+
+        function closeStripe() { document.getElementById('stripe-modal').classList.add('hidden'); }
+
+        function simulatePaymentSuccess() {
+            const btn = document.getElementById('pay-btn-text');
+            btn.innerText = 'Processing...';
+            setTimeout(() => {
+                document.getElementById('stripe-modal').classList.add('hidden');
+                document.getElementById('success-modal').classList.remove('hidden');
+            }, 1500);
+        }
+    </script>
+</body>
+</html>
